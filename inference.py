@@ -11,9 +11,14 @@ from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
 # from transformers import AutoProcessor, AutoModelForVision2Seq
 
 
-os.environ["HF_HOME"] = "./weights/hf_home"
-os.environ["TRANSFORMERS_CACHE"] = "./weights/hf_home"
-os.environ["HF_DATASETS_CACHE"] = "./weights/hf_home"
+# os.environ["HF_HOME"] = "./weights/hf_home"
+# os.environ["TRANSFORMERS_CACHE"] = "./weights/hf_home"
+# os.environ["HF_DATASETS_CACHE"] = "./weights/hf_home"
+base_dir = os.path.abspath("./weights/hf_home")
+
+os.environ["HF_HOME"] = base_dir
+os.environ["TRANSFORMERS_CACHE"] = base_dir
+os.environ["HF_DATASETS_CACHE"] = base_dir
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 PROMPTS = [
     # 1️⃣ Standard reasoning
@@ -27,6 +32,7 @@ PROMPTS = [
 
     # 4️⃣ Strict format (low hallucination)
     "IMPORTANT: Output only one character: A, B, C, or D. Do not explain. If uncertain, output 5."
+
 ]
 # =========================
 # DEVICE + MODEL SELECTION
@@ -36,33 +42,35 @@ PROMPTS = [
 model_id = "Qwen/Qwen2-VL-2B-Instruct"
 save_path = "./weights/qwen2_vl_2b"
 os.makedirs(save_path, exist_ok=True)
-
-# ===== CHECK IF EXISTS =====
-model_exists = any("models--Qwen--Qwen2-VL-2B-Instruct" in x for x in os.listdir(save_path))
-
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
-if not model_exists:
-    print("Downloading model...")
+# # ===== CHECK IF EXISTS =====
+# model_exists = any("models--Qwen--Qwen2-VL-2B-Instruct" in x for x in os.listdir(save_path))
 
-    processor = AutoProcessor.from_pretrained(
-        model_id,
-        cache_dir=save_path
-    )
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+# print(f"Using device: {device}")
 
-    model = Qwen2VLForConditionalGeneration.from_pretrained(
-        model_id,
-        cache_dir=save_path,
-        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-        device_map="balanced",
-        low_cpu_mem_usage=True
-    )
+# if not model_exists:
+#     print("Downloading model...")
 
-    print("Download complete!")
+#     processor = AutoProcessor.from_pretrained(
+#         model_id,
+#         cache_dir=save_path
+#     )
 
-else:
-    print("Model already exists. Skipping download.")
+#     model = Qwen2VLForConditionalGeneration.from_pretrained(
+#         model_id,
+#         cache_dir=save_path,
+#         torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+#         device_map="balanced",
+#         low_cpu_mem_usage=True
+#     )
+
+#     print("Download complete!")
+
+# else:
+#     print("Model already exists. Skipping download.")
 
 
 print(f"Using Qwen2-VL-2B ({device})")
@@ -73,7 +81,7 @@ model_path = "./weights/qwen2_vl_2b"
 model = Qwen2VLForConditionalGeneration.from_pretrained(
     model_path,
     device_map="auto",
-    torch_dtype=torch.float16,
+    torch_dtype=torch.float16 if device == "cuda" else torch.float32,
     low_cpu_mem_usage=True,
     local_files_only=True,
 )
@@ -142,6 +150,8 @@ def verify_answer(image_path, answer):
             **inputs,
             max_new_tokens=5,
             do_sample=False, 
+            eos_token_id=processor.tokenizer.eos_token_id,
+            pad_token_id=processor.tokenizer.eos_token_id
         )
 
     result = processor.decode(
@@ -218,8 +228,10 @@ def predict_image(image_path):
             # print("Step 3: Running generation")
             output = model.generate(
                 **inputs,
-                max_new_tokens=20,
-                do_sample=False
+                max_new_tokens=15,
+                do_sample=False,
+                eos_token_id=processor.tokenizer.eos_token_id,
+                pad_token_id=processor.tokenizer.eos_token_id
             )
         # print("Step 4: Decoding")
         result = processor.decode(
@@ -239,7 +251,8 @@ def predict_image(image_path):
 
     best_answer = final_decision(answers)
 
-    if best_answer != 5:
+    # if best_answer != 5:
+    if best_answer != 5 and answers.count(best_answer) >= 3:
         is_correct = verify_answer(image_path, ["A","B","C","D"][best_answer-1])
 
         if not is_correct:
