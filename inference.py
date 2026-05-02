@@ -62,16 +62,17 @@ model = Qwen2VLForConditionalGeneration.from_pretrained(
 )
 processor = AutoProcessor.from_pretrained(model_path, local_files_only=True)
 
-# NEW: LLaMA-3-8B reasoning model
-llama_path = "./weights/llama3_8b"   # folder where you saved the model offline
-llama_model = AutoModelForCausalLM.from_pretrained(
-    llama_path,
+# NEW: Mistral reasoning model (replaces LLaMA)
+mistral_path = "./weights/mistral_7b"
+mistral_model = AutoModelForCausalLM.from_pretrained(
+    mistral_path,
     device_map="auto",
     torch_dtype=torch.float16 if device == "cuda" else torch.float32,
     local_files_only=True,
     low_cpu_mem_usage=True,
 )
-llama_tokenizer = AutoTokenizer.from_pretrained(llama_path, local_files_only=True)
+mistral_tokenizer = AutoTokenizer.from_pretrained(mistral_path, local_files_only=True)
+
 
 
 
@@ -204,14 +205,14 @@ def predict_image(image_path):
         mcq_text = processor.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
 
         
-        # Step 2: Send extracted text + reasoning prompt to LLaMA
+        # Step 2: Send extracted text + reasoning prompt to Mistral
         reasoning_prompt = f"{prompt}\nMCQ:\n{mcq_text}"
-        llama_inputs = llama_tokenizer(reasoning_prompt, return_tensors="pt").to(device)
+        mistral_inputs = mistral_tokenizer(reasoning_prompt, return_tensors="pt").to(device)
 
         with torch.no_grad():
-            llama_output = llama_model.generate(**llama_inputs, max_new_tokens=20, do_sample=False)
+            mistral_output = mistral_model.generate(**mistral_inputs, max_new_tokens=20, do_sample=False)
 
-        result = llama_tokenizer.decode(llama_output[0], skip_special_tokens=True)
+        result = mistral_tokenizer.decode(mistral_output[0], skip_special_tokens=True)
 
 
         ans = extract_answer(result)
