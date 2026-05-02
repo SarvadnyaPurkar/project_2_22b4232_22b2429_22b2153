@@ -7,7 +7,9 @@ from PIL import Image
 import time
 import argparse
 from collections import Counter
-from transformers import AutoProcessor, Qwen2VLForConditionalGeneration,  AutoModelForCausalLM
+from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 
 
 # os.environ["HF_HOME"] = "./weights/hf_home"
@@ -46,7 +48,7 @@ print(f"Using device: {device}")
 
 
 print(f"Using Qwen2-VL-2B ({device})")
-print(f"Using deepseek ({device})")
+print(f"Using LLaMA-3-8B ({device})")
 # print("Using Qwen2-VL-2B (GPU)")
 
 # Existing Qwen2B setup
@@ -60,16 +62,18 @@ model = Qwen2VLForConditionalGeneration.from_pretrained(
 )
 processor = AutoProcessor.from_pretrained(model_path, local_files_only=True)
 
-# NEW: DeepSeek reasoning model
-deepseek_path = "./weights/deepseek_llm"
-deepseek_model = AutoModelForCausalLM.from_pretrained(
-    deepseek_path,
+# NEW: LLaMA-3-8B reasoning model
+llama_path = "./weights/llama3_8b"   # folder where you saved the model offline
+llama_model = AutoModelForCausalLM.from_pretrained(
+    llama_path,
     device_map="auto",
     torch_dtype=torch.float16 if device == "cuda" else torch.float32,
     local_files_only=True,
     low_cpu_mem_usage=True,
 )
-deepseek_processor = AutoProcessor.from_pretrained(deepseek_path, local_files_only=True)
+llama_tokenizer = AutoTokenizer.from_pretrained(llama_path, local_files_only=True)
+
+
 
 
 
@@ -199,19 +203,24 @@ def predict_image(image_path):
             output = model.generate(**inputs, max_new_tokens=256, do_sample=False)
         mcq_text = processor.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
 
-        # Step 2: Send extracted text + reasoning prompt to DeepSeek
+        
+        # Step 2: Send extracted text + reasoning prompt to LLaMA
         reasoning_prompt = f"{prompt}\nMCQ:\n{mcq_text}"
-        ds_inputs = deepseek_processor(reasoning_prompt, return_tensors="pt").to(device)
+        llama_inputs = llama_tokenizer(reasoning_prompt, return_tensors="pt").to(device)
+
         with torch.no_grad():
-            ds_output = deepseek_model.generate(**ds_inputs, max_new_tokens=20, do_sample=False)
-        result = deepseek_processor.decode(ds_output[0], skip_special_tokens=True)
+            llama_output = llama_model.generate(**llama_inputs, max_new_tokens=20, do_sample=False)
+
+        result = llama_tokenizer.decode(llama_output[0], skip_special_tokens=True)
+
 
         ans = extract_answer(result)
         print("RAW:", result, "| FINAL:", ans)
         answers.append(ans)
 
         # cleanup
-        del inputs, output, ds_inputs, ds_output
+        del inputs, output, llama_inputs, llama_output
+
         torch.cuda.empty_cache()
         gc.collect()
 
