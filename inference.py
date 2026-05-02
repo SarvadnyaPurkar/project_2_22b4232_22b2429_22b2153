@@ -48,7 +48,8 @@ print(f"Using device: {device}")
 
 
 print(f"Using Qwen2-VL-2B ({device})")
-print(f"Using LLaMA-3-8B ({device})")
+print(f"Using Mistral-7B-Instruct ({device})")
+
 # print("Using Qwen2-VL-2B (GPU)")
 
 # Existing Qwen2B setup
@@ -220,7 +221,7 @@ def predict_image(image_path):
         answers.append(ans)
 
         # cleanup
-        del inputs, output, llama_inputs, llama_output
+        del inputs, output, mistral_inputs, mistral_output
 
         torch.cuda.empty_cache()
         gc.collect()
